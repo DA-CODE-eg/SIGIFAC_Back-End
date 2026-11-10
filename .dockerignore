@@ -1,0 +1,4 @@
+.env
+.env.*
+modelos
+__pycache__
