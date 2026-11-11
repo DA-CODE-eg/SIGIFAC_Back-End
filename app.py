@@ -30,7 +30,7 @@ class Referencia(BaseModel):
 
 
 class Verificacion(BaseModel):
-    referencia: list[float] = Field(min_length=128, max_length=128)
+    referencia: list[float] | None = Field(default=None, min_length=128, max_length=128)
     capturas: list[StrictStr] = Field(min_length=3, max_length=3)
     direccion: str
 
@@ -84,7 +84,7 @@ def vida(imagen, cara):
 @app.get("/health")
 def health(x_facial_token: str = Header(default="")):
     autenticar(x_facial_token)
-    return {"listo": True, "version": "yunet-sface-mn3-v1"}
+    return {"listo": True, "version": "yunet-sface-mn3-v1", "capturaSinReferencia": True}
 
 
 @app.post("/referencia")
@@ -102,11 +102,13 @@ def verificar(datos: Verificacion, x_facial_token: str = Header(default="")):
     autenticar(x_facial_token)
     if datos.direccion not in ("IZQUIERDA", "DERECHA") or len(set(datos.capturas)) != 3:
         return {"aprobada": False}
-    referencia = np.array(datos.referencia, dtype=np.float32)
-    if not np.isfinite(referencia).all() or not np.linalg.norm(referencia):
+    referencia = np.array(datos.referencia, dtype=np.float32) if datos.referencia is not None else None
+    if referencia is not None and (not np.isfinite(referencia).all() or not np.linalg.norm(referencia)):
         return {"aprobada": False}
     with mutex:
         medidas = [rostro(captura) for captura in datos.capturas]
+        if referencia is None:
+            referencia = medidas[0][2]
         poses = [medida[3] for medida in medidas]
         sentido = 1 if datos.direccion == "IZQUIERDA" else -1
         movimiento = abs(poses[0]) <= 0.16 and abs(poses[2]) <= 0.16 and sentido * (poses[1] - poses[0]) >= 0.14
