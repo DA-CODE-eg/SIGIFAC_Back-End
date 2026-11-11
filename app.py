@@ -31,7 +31,7 @@ class Referencia(BaseModel):
 
 class Verificacion(BaseModel):
     referencia: list[float] | None = Field(default=None, min_length=128, max_length=128)
-    capturas: list[StrictStr] = Field(min_length=3, max_length=3)
+    capturas: list[StrictStr] = Field(min_length=1, max_length=3)
     direccion: str
 
 
@@ -84,7 +84,7 @@ def vida(imagen, cara):
 @app.get("/health")
 def health(x_facial_token: str = Header(default="")):
     autenticar(x_facial_token)
-    return {"listo": True, "version": "yunet-sface-mn3-v1", "capturaSinReferencia": True}
+    return {"listo": True, "version": "yunet-sface-mn3-v1", "capturaSinReferencia": True, "capturaUnica": True}
 
 
 @app.post("/referencia")
@@ -100,7 +100,12 @@ def referencia(datos: Referencia, x_facial_token: str = Header(default="")):
 @app.post("/verificar")
 def verificar(datos: Verificacion, x_facial_token: str = Header(default="")):
     autenticar(x_facial_token)
-    if datos.direccion not in ("IZQUIERDA", "DERECHA") or len(set(datos.capturas)) != 3:
+    if datos.referencia is None and len(datos.capturas) == 1:
+        with mutex:
+            imagen, cara, _, pose = rostro(datos.capturas[0])
+            aprobada = abs(pose) <= 0.16 and vida(imagen, cara) >= vida_min
+        return {"aprobada": aprobada, "version": "yunet-mn3-captura-v1"}
+    if len(datos.capturas) != 3 or datos.direccion not in ("IZQUIERDA", "DERECHA") or len(set(datos.capturas)) != 3:
         return {"aprobada": False}
     referencia = np.array(datos.referencia, dtype=np.float32) if datos.referencia is not None else None
     if referencia is not None and (not np.isfinite(referencia).all() or not np.linalg.norm(referencia)):
